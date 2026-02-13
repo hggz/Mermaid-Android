@@ -1,0 +1,18 @@
+# Built / generated files
+build/
+*.class
+*.jar
+*.war
+
+# IDE
+.idea/
+*.iml
+.gradle/
+local.properties
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
