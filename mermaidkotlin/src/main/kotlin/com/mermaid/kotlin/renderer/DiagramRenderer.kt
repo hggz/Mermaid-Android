@@ -2,6 +2,7 @@ package com.mermaid.kotlin.renderer
 
 import android.graphics.*
 import com.mermaid.kotlin.layout.*
+import com.mermaid.kotlin.model.*
 import java.io.ByteArrayOutputStream
 import kotlin.math.atan2
 import kotlin.math.cos
