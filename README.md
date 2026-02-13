@@ -6,11 +6,87 @@ This is the Android companion to [Mermaid-iOS](https://github.com/hggz/Mermaid-i
 
 ## Supported Diagrams
 
-| Type | Example |
-|------|---------|
-| Flowchart | `flowchart TD` with node shapes, edge styles, labels |
-| Sequence Diagram | `sequenceDiagram` with participants, messages, arrow styles |
-| Pie Chart | `pie title ...` with labeled slices |
+### Flowcharts
+
+<table>
+<tr><th>Mermaid.js (GitHub)</th><th>MermaidKotlin (Native)</th></tr>
+<tr>
+<td>
+
+```mermaid
+flowchart TD
+    A[Rectangle]       --> B(Rounded)
+    B                  --> C([Stadium])
+    C                  --> D{Diamond}
+    D                  --> E((Circle))
+    E                  --> F>Asymmetric]
+```
+
+</td>
+<td>
+<img src="examples/flowchart.png" alt="Flowchart rendered by MermaidKotlin" width="300">
+</td>
+</tr>
+</table>
+
+| Direction | Meaning |
+|-----------|---------|
+| `TD` / `TB` | Top → Down |
+| `BT` | Bottom → Top |
+| `LR` | Left → Right |
+| `RL` | Right → Left |
+
+| Edge Style | Syntax |
+|------------|--------|
+| Solid arrow | `-->` |
+| Dotted arrow | `-.->` |
+| Thick arrow | `==>` |
+| Invisible | `~~~` |
+
+### Sequence Diagrams
+
+<table>
+<tr><th>Mermaid.js (GitHub)</th><th>MermaidKotlin (Native)</th></tr>
+<tr>
+<td>
+
+```mermaid
+sequenceDiagram
+    participant A as Alice
+    actor B as Bob
+    A->>B: Solid arrow
+    A-->>B: Dotted arrow  
+    A-)B: Async
+    A--)B: Dotted async
+```
+
+</td>
+<td>
+<img src="examples/sequence.png" alt="Sequence diagram rendered by MermaidKotlin" width="300">
+</td>
+</tr>
+</table>
+
+### Pie Charts
+
+<table>
+<tr><th>Mermaid.js (GitHub)</th><th>MermaidKotlin (Native)</th></tr>
+<tr>
+<td>
+
+```mermaid
+pie title Distribution
+    "Category A" : 40
+    "Category B" : 35
+    "Category C" : 25
+```
+
+</td>
+<td>
+<img src="examples/pie.png" alt="Pie chart rendered by MermaidKotlin" width="300">
+</td>
+</tr>
+</table>
 
 ## Installation
 
@@ -121,7 +197,7 @@ Mermaid DSL String
 
 - **Declarations**: `participant`, `actor`, `participant A as Alice`
 - **Arrow styles**: `->>`, `-->>`, `->`, `-->`, `-x`, `--x`, `-)`, `--)`
-- **Auto-participants**: Participants are auto-created from messages
+- **Auto-participants**: Created automatically from messages
 
 ### Pie Chart
 
