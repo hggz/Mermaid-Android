@@ -23,6 +23,11 @@ class DiagramRenderer(
         val canvas = Canvas(bitmap)
         fillBackground(canvas, layout.width, layout.height)
 
+        // Draw subgraphs (behind everything)
+        for (sg in layout.subgraphs) {
+            drawSubgraph(canvas, sg)
+        }
+
         // Draw edges first (behind nodes)
         for (edge in layout.edges) {
             drawEdge(canvas, edge)
@@ -41,20 +46,9 @@ class DiagramRenderer(
         val canvas = Canvas(bitmap)
         fillBackground(canvas, layout.width, layout.height)
 
-        // Draw lifelines
-        for (p in layout.participants) {
-            drawLifeline(canvas, p)
-        }
-
-        // Draw participant boxes
-        for (p in layout.participants) {
-            drawParticipantBox(canvas, p)
-        }
-
-        // Draw messages
-        for (msg in layout.messages) {
-            drawMessage(canvas, msg)
-        }
+        for (p in layout.participants) { drawLifeline(canvas, p) }
+        for (p in layout.participants) { drawParticipantBox(canvas, p) }
+        for (msg in layout.messages) { drawMessage(canvas, msg) }
 
         return bitmap
     }
@@ -64,19 +58,83 @@ class DiagramRenderer(
         val canvas = Canvas(bitmap)
         fillBackground(canvas, layout.width, layout.height)
 
-        // Title
         layout.title?.let { title ->
             drawText(canvas, title, layout.titlePosition,
                 fontSize = config.titleFontSize, bold = true, alignment = TextAlignment.CENTER)
         }
 
-        // Draw slices
         for (slice in layout.slices) {
             drawPieSlice(canvas, slice, layout.center, layout.radius)
         }
 
-        // Draw legend
         drawPieLegend(canvas, layout.slices, layout.center, layout.radius)
+
+        return bitmap
+    }
+
+    fun renderClassDiagram(layout: DiagramLayout.ClassDiagramLayout): Bitmap {
+        val bitmap = createBitmap(layout.width, layout.height)
+        val canvas = Canvas(bitmap)
+        fillBackground(canvas, layout.width, layout.height)
+
+        for (rel in layout.relationships) { drawClassRelationship(canvas, rel) }
+        for (cls in layout.classes) { drawClassBox(canvas, cls) }
+
+        return bitmap
+    }
+
+    fun renderStateDiagram(layout: DiagramLayout.StateDiagramLayout): Bitmap {
+        val bitmap = createBitmap(layout.width, layout.height)
+        val canvas = Canvas(bitmap)
+        fillBackground(canvas, layout.width, layout.height)
+
+        for (t in layout.transitions) { drawStateTransition(canvas, t) }
+        for (s in layout.states) { drawState(canvas, s) }
+
+        return bitmap
+    }
+
+    fun renderGanttChart(layout: DiagramLayout.GanttLayout): Bitmap {
+        val bitmap = createBitmap(layout.width, layout.height)
+        val canvas = Canvas(bitmap)
+        fillBackground(canvas, layout.width, layout.height)
+
+        layout.title?.let { title ->
+            drawText(canvas, title, layout.titlePosition,
+                fontSize = config.titleFontSize, bold = true, alignment = TextAlignment.CENTER)
+        }
+
+        // Grid lines
+        val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(217, 217, 217)
+            style = Paint.Style.STROKE
+            strokeWidth = 0.5f
+        }
+        for ((x, label) in layout.gridLines) {
+            canvas.drawLine(x, config.padding + 35f, x, layout.height - config.padding, gridPaint)
+            drawText(canvas, label, PointF(x, config.padding + 45f),
+                fontSize = config.fontSize - 3, bold = false, alignment = TextAlignment.CENTER)
+        }
+
+        // Section labels
+        for (section in layout.sections) {
+            drawText(canvas, section.name, PointF(config.padding + 10f, section.y + 6f),
+                fontSize = config.fontSize - 1, bold = true, alignment = TextAlignment.LEFT)
+        }
+
+        // Task bars
+        for (task in layout.tasks) { drawGanttTask(canvas, task) }
+
+        return bitmap
+    }
+
+    fun renderERDiagram(layout: DiagramLayout.ERDiagramLayout): Bitmap {
+        val bitmap = createBitmap(layout.width, layout.height)
+        val canvas = Canvas(bitmap)
+        fillBackground(canvas, layout.width, layout.height)
+
+        for (rel in layout.relationships) { drawERRelationship(canvas, rel) }
+        for (entity in layout.entities) { drawEREntity(canvas, entity) }
 
         return bitmap
     }
@@ -106,18 +164,78 @@ class DiagramRenderer(
 
     // endregion
 
+    // region Color Parsing
+
+    private fun parseCSSColor(css: String): Int? {
+        val hex = css.trim()
+        if (!hex.startsWith("#")) return null
+        val hexStr = hex.drop(1)
+
+        return when (hexStr.length) {
+            3 -> {
+                val r = hexStr[0].digitToInt(16)
+                val g = hexStr[1].digitToInt(16)
+                val b = hexStr[2].digitToInt(16)
+                Color.rgb(r * 17, g * 17, b * 17)
+            }
+            6 -> {
+                val value = hexStr.toLongOrNull(16) ?: return null
+                Color.rgb(
+                    ((value shr 16) and 0xFF).toInt(),
+                    ((value shr 8) and 0xFF).toInt(),
+                    (value and 0xFF).toInt()
+                )
+            }
+            else -> null
+        }
+    }
+
+    // endregion
+
+    // region Subgraph Drawing
+
+    private fun drawSubgraph(canvas: Canvas, subgraph: PositionedSubgraph) {
+        val frame = subgraph.frame
+
+        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = config.subgraphFillColor
+            style = Paint.Style.FILL
+        }
+        val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = config.subgraphBorderColor
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+            pathEffect = DashPathEffect(floatArrayOf(6f, 3f), 0f)
+        }
+
+        canvas.drawRoundRect(frame, 8f, 8f, fillPaint)
+        canvas.drawRoundRect(frame, 8f, 8f, strokePaint)
+
+        drawText(canvas, subgraph.subgraph.label, subgraph.labelPosition,
+            fontSize = config.fontSize - 1, bold = true, alignment = TextAlignment.LEFT)
+    }
+
+    // endregion
+
     // region Flowchart Drawing
 
     private fun drawFlowNode(canvas: Canvas, node: PositionedNode) {
         val frame = node.frame
+
+        // Apply custom style if present
+        val fillColor = node.style?.fill?.let { parseCSSColor(it) } ?: config.nodeColor
+        val strokeColor = node.style?.stroke?.let { parseCSSColor(it) } ?: config.nodeBorderColor
+        val strokeWidth = node.style?.strokeWidth ?: config.lineWidth
+        val textColor = node.style?.color?.let { parseCSSColor(it) } ?: config.textColor
+
         val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = config.nodeColor
+            color = fillColor
             style = Paint.Style.FILL
         }
         val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = config.nodeBorderColor
+            color = strokeColor
             style = Paint.Style.STROKE
-            strokeWidth = config.lineWidth
+            this.strokeWidth = strokeWidth
         }
 
         when (node.node.shape) {
@@ -190,7 +308,8 @@ class DiagramRenderer(
         // Draw label
         drawText(canvas, node.node.label,
             PointF(frame.centerX(), frame.centerY()),
-            fontSize = config.fontSize, bold = false, alignment = TextAlignment.CENTER)
+            fontSize = config.fontSize, bold = false, alignment = TextAlignment.CENTER,
+            textColor = textColor)
     }
 
     private fun drawEdge(canvas: Canvas, edge: PositionedEdge) {
@@ -211,17 +330,28 @@ class DiagramRenderer(
             EdgeStyle.INVISIBLE -> return
         }
 
-        canvas.drawLine(edge.fromPoint.x, edge.fromPoint.y,
-            edge.toPoint.x, edge.toPoint.y, paint)
+        // Draw multi-point path
+        if (edge.points.size < 2) return
 
-        // Draw arrowhead
-        drawArrowhead(canvas, edge.fromPoint, edge.toPoint)
+        val path = Path().apply {
+            moveTo(edge.points[0].x, edge.points[0].y)
+            for (i in 1 until edge.points.size) {
+                lineTo(edge.points[i].x, edge.points[i].y)
+            }
+        }
+        canvas.drawPath(path, paint)
+
+        // Draw arrowhead at the last segment
+        if (edge.points.size >= 2) {
+            val from = edge.points[edge.points.size - 2]
+            val to = edge.points[edge.points.size - 1]
+            drawArrowhead(canvas, from, to)
+        }
 
         // Edge label
         val label = edge.edge.label
         val pos = edge.labelPosition
         if (label != null && pos != null) {
-            // White background for label
             val textSize = measureText(label, config.fontSize - 2)
             val bgRect = RectF(
                 pos.x - textSize.x / 2f - 4f,
@@ -406,14 +536,582 @@ class DiagramRenderer(
 
     // endregion
 
+    // region Class Diagram Drawing
+
+    private fun drawClassBox(canvas: Canvas, classBox: PositionedClassBox) {
+        val cls = classBox.classDef
+
+        // Full box background + border
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = config.backgroundColor
+            style = Paint.Style.FILL
+        }
+        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = config.nodeBorderColor
+            style = Paint.Style.STROKE
+            strokeWidth = config.lineWidth
+        }
+        canvas.drawRect(classBox.frame, bgPaint)
+        canvas.drawRect(classBox.frame, borderPaint)
+
+        // Header background
+        val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = config.nodeColor
+            style = Paint.Style.FILL
+        }
+        canvas.drawRect(classBox.headerFrame, headerPaint)
+
+        // Header text
+        var headerY = classBox.headerFrame.centerY()
+        cls.annotation?.let { annotation ->
+            headerY -= 6f
+            drawText(canvas, "<<$annotation>>",
+                PointF(classBox.headerFrame.centerX(), headerY - 2f),
+                fontSize = config.fontSize - 3, bold = false, alignment = TextAlignment.CENTER)
+            headerY += 12f
+        }
+        drawText(canvas, cls.name,
+            PointF(classBox.headerFrame.centerX(), headerY),
+            fontSize = config.fontSize, bold = true, alignment = TextAlignment.CENTER)
+
+        // Separator line under header
+        val linePaint = Paint().apply {
+            color = config.nodeBorderColor
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+        }
+        canvas.drawLine(classBox.frame.left, classBox.headerFrame.bottom,
+            classBox.frame.right, classBox.headerFrame.bottom, linePaint)
+
+        // Properties
+        val propStartY = classBox.propertiesFrame.top + 4f
+        for ((i, prop) in cls.properties.withIndex()) {
+            val y = propStartY + i * config.classMemberHeight + config.classMemberHeight / 2f
+            val typeStr = if (prop.memberType != null) "${prop.memberType} " else ""
+            val text = "${prop.visibility.symbol}$typeStr${prop.name}"
+            drawText(canvas, text,
+                PointF(classBox.frame.left + 10f, y),
+                fontSize = config.fontSize - 2, bold = false, alignment = TextAlignment.LEFT)
+        }
+
+        // Separator between properties and methods
+        if (cls.properties.isNotEmpty() || cls.methods.isNotEmpty()) {
+            linePaint.strokeWidth = 0.5f
+            canvas.drawLine(classBox.frame.left, classBox.methodsFrame.top,
+                classBox.frame.right, classBox.methodsFrame.top, linePaint)
+        }
+
+        // Methods
+        val methStartY = classBox.methodsFrame.top + 4f
+        for ((i, meth) in cls.methods.withIndex()) {
+            val y = methStartY + i * config.classMemberHeight + config.classMemberHeight / 2f
+            val returnType = if (meth.memberType != null) " ${meth.memberType}" else ""
+            val text = "${meth.visibility.symbol}${meth.name}$returnType"
+            drawText(canvas, text,
+                PointF(classBox.frame.left + 10f, y),
+                fontSize = config.fontSize - 2, bold = false, alignment = TextAlignment.LEFT)
+        }
+    }
+
+    private fun drawClassRelationship(canvas: Canvas, rel: PositionedClassRelationship) {
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = config.edgeColor
+            style = Paint.Style.STROKE
+            strokeWidth = config.lineWidth
+        }
+
+        when (rel.relationship.relationshipType) {
+            ClassRelationship.ClassRelationType.DEPENDENCY,
+            ClassRelationship.ClassRelationType.REALIZATION -> {
+                paint.pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
+            }
+            else -> {}
+        }
+
+        canvas.drawLine(rel.fromPoint.x, rel.fromPoint.y, rel.toPoint.x, rel.toPoint.y, paint)
+
+        // Draw relationship markers
+        drawRelationshipMarker(canvas, rel.relationship.relationshipType,
+            rel.fromPoint, rel.toPoint)
+
+        // Labels
+        rel.relationship.label?.let { label ->
+            rel.labelPos?.let { pos ->
+                drawText(canvas, label, pos,
+                    fontSize = config.fontSize - 2, bold = false, alignment = TextAlignment.CENTER)
+            }
+        }
+        rel.relationship.fromCardinality?.let { card ->
+            rel.fromLabelPos?.let { pos ->
+                drawText(canvas, card, pos,
+                    fontSize = config.fontSize - 3, bold = false, alignment = TextAlignment.CENTER)
+            }
+        }
+        rel.relationship.toCardinality?.let { card ->
+            rel.toLabelPos?.let { pos ->
+                drawText(canvas, card, pos,
+                    fontSize = config.fontSize - 3, bold = false, alignment = TextAlignment.CENTER)
+            }
+        }
+    }
+
+    private fun drawRelationshipMarker(canvas: Canvas, type: ClassRelationship.ClassRelationType,
+                                       from: PointF, to: PointF) {
+        val angle = atan2((to.y - from.y).toDouble(), (to.x - from.x).toDouble()).toFloat()
+        val size = 12f
+
+        when (type) {
+            ClassRelationship.ClassRelationType.INHERITANCE,
+            ClassRelationship.ClassRelationType.REALIZATION -> {
+                drawTriangleArrow(canvas, to, angle, size, filled = false)
+            }
+            ClassRelationship.ClassRelationType.COMPOSITION -> {
+                drawDiamond(canvas, from, angle + Math.PI.toFloat(), size, filled = true)
+            }
+            ClassRelationship.ClassRelationType.AGGREGATION -> {
+                drawDiamond(canvas, from, angle + Math.PI.toFloat(), size, filled = false)
+            }
+            ClassRelationship.ClassRelationType.ASSOCIATION,
+            ClassRelationship.ClassRelationType.DEPENDENCY -> {
+                drawArrowhead(canvas, from, to)
+            }
+        }
+    }
+
+    private fun drawTriangleArrow(canvas: Canvas, at: PointF, angle: Float,
+                                  size: Float, filled: Boolean) {
+        val halfWidth = size / 2.5f
+        val p1 = PointF(
+            (at.x - size * cos(angle.toDouble()) + halfWidth * sin(angle.toDouble())).toFloat(),
+            (at.y - size * sin(angle.toDouble()) - halfWidth * cos(angle.toDouble())).toFloat()
+        )
+        val p2 = PointF(
+            (at.x - size * cos(angle.toDouble()) - halfWidth * sin(angle.toDouble())).toFloat(),
+            (at.y - size * sin(angle.toDouble()) + halfWidth * cos(angle.toDouble())).toFloat()
+        )
+
+        val path = Path().apply {
+            moveTo(at.x, at.y)
+            lineTo(p1.x, p1.y)
+            lineTo(p2.x, p2.y)
+            close()
+        }
+
+        if (filled) {
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = config.edgeColor
+                style = Paint.Style.FILL
+            }
+            canvas.drawPath(path, paint)
+        } else {
+            val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = config.backgroundColor
+                style = Paint.Style.FILL
+            }
+            val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = config.edgeColor
+                style = Paint.Style.STROKE
+                strokeWidth = config.lineWidth
+            }
+            canvas.drawPath(path, fillPaint)
+            canvas.drawPath(path, strokePaint)
+        }
+    }
+
+    private fun drawDiamond(canvas: Canvas, at: PointF, angle: Float,
+                            size: Float, filled: Boolean) {
+        val halfWidth = size / 3f
+        val a = angle.toDouble()
+
+        val tip = at
+        val left = PointF(
+            (tip.x + (size / 2) * cos(a) + halfWidth * sin(a)).toFloat(),
+            (tip.y + (size / 2) * sin(a) - halfWidth * cos(a)).toFloat()
+        )
+        val back = PointF(
+            (tip.x + size * cos(a)).toFloat(),
+            (tip.y + size * sin(a)).toFloat()
+        )
+        val right = PointF(
+            (tip.x + (size / 2) * cos(a) - halfWidth * sin(a)).toFloat(),
+            (tip.y + (size / 2) * sin(a) + halfWidth * cos(a)).toFloat()
+        )
+
+        val path = Path().apply {
+            moveTo(tip.x, tip.y)
+            lineTo(left.x, left.y)
+            lineTo(back.x, back.y)
+            lineTo(right.x, right.y)
+            close()
+        }
+
+        if (filled) {
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = config.edgeColor
+                style = Paint.Style.FILL
+            }
+            canvas.drawPath(path, paint)
+        } else {
+            val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = config.backgroundColor
+                style = Paint.Style.FILL
+            }
+            val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = config.edgeColor
+                style = Paint.Style.STROKE
+                strokeWidth = config.lineWidth
+            }
+            canvas.drawPath(path, fillPaint)
+            canvas.drawPath(path, strokePaint)
+        }
+    }
+
+    // endregion
+
+    // region State Diagram Drawing
+
+    private fun drawState(canvas: Canvas, state: PositionedState) {
+        val frame = state.frame
+
+        if (state.isStartEnd) {
+            // Start/end marker: filled circle
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = config.edgeColor
+                style = Paint.Style.FILL
+            }
+            canvas.drawOval(frame, paint)
+            return
+        }
+
+        // Regular state: rounded rectangle
+        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = config.nodeColor
+            style = Paint.Style.FILL
+        }
+        val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = config.nodeBorderColor
+            style = Paint.Style.STROKE
+            strokeWidth = config.lineWidth
+        }
+
+        canvas.drawRoundRect(frame, config.stateCornerRadius, config.stateCornerRadius, fillPaint)
+        canvas.drawRoundRect(frame, config.stateCornerRadius, config.stateCornerRadius, strokePaint)
+
+        // State label
+        var labelY = frame.centerY()
+        val desc = state.state.description
+        if (desc != null) {
+            labelY -= 8f
+            drawText(canvas, state.state.label,
+                PointF(frame.centerX(), labelY),
+                fontSize = config.fontSize, bold = true, alignment = TextAlignment.CENTER)
+            drawText(canvas, desc,
+                PointF(frame.centerX(), labelY + 16f),
+                fontSize = config.fontSize - 2, bold = false, alignment = TextAlignment.CENTER)
+        } else {
+            drawText(canvas, state.state.label,
+                PointF(frame.centerX(), labelY),
+                fontSize = config.fontSize, bold = false, alignment = TextAlignment.CENTER)
+        }
+    }
+
+    private fun drawStateTransition(canvas: Canvas, transition: PositionedStateTransition) {
+        if (transition.points.isEmpty()) return
+
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = config.edgeColor
+            style = Paint.Style.STROKE
+            strokeWidth = config.lineWidth
+        }
+
+        val path = Path().apply {
+            moveTo(transition.points[0].x, transition.points[0].y)
+            for (i in 1 until transition.points.size) {
+                lineTo(transition.points[i].x, transition.points[i].y)
+            }
+        }
+        canvas.drawPath(path, paint)
+
+        if (transition.points.size >= 2) {
+            val from = transition.points[transition.points.size - 2]
+            val to = transition.points[transition.points.size - 1]
+            drawArrowhead(canvas, from, to)
+        }
+
+        // Label
+        transition.transition.label?.let { label ->
+            transition.labelPosition?.let { pos ->
+                val textSize = measureText(label, config.fontSize - 2)
+                val bgRect = RectF(
+                    pos.x - textSize.x / 2f - 4f,
+                    pos.y - textSize.y / 2f - 2f,
+                    pos.x + textSize.x / 2f + 4f,
+                    pos.y + textSize.y / 2f + 2f
+                )
+                val bgPaint = Paint().apply {
+                    color = config.backgroundColor
+                    style = Paint.Style.FILL
+                }
+                canvas.drawRect(bgRect, bgPaint)
+
+                drawText(canvas, label, pos,
+                    fontSize = config.fontSize - 2, bold = false, alignment = TextAlignment.CENTER)
+            }
+        }
+    }
+
+    // endregion
+
+    // region Gantt Chart Drawing
+
+    private fun drawGanttTask(canvas: Canvas, task: PositionedGanttTask) {
+        val bar = task.bar
+
+        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = task.color
+            style = Paint.Style.FILL
+        }
+
+        // Rounded bar
+        canvas.drawRoundRect(bar, 4f, 4f, fillPaint)
+
+        // Border for active/critical tasks
+        if (task.task.status == GanttTask.TaskStatus.ACTIVE ||
+            task.task.status == GanttTask.TaskStatus.CRITICAL ||
+            task.task.status == GanttTask.TaskStatus.CRITICAL_ACTIVE) {
+            val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = config.edgeColor
+                style = Paint.Style.STROKE
+                strokeWidth = 1.5f
+            }
+            canvas.drawRoundRect(bar, 4f, 4f, borderPaint)
+        }
+
+        // Stripe pattern for done tasks
+        if (task.task.status == GanttTask.TaskStatus.DONE ||
+            task.task.status == GanttTask.TaskStatus.CRITICAL_DONE) {
+            val stripePaint = Paint().apply {
+                color = Color.argb(77, 255, 255, 255)
+                style = Paint.Style.STROKE
+                strokeWidth = 1f
+            }
+            var x = bar.left + 4f
+            while (x < bar.right) {
+                canvas.drawLine(x, bar.top, x - 8f, bar.bottom, stripePaint)
+                x += 6f
+            }
+        }
+
+        // Task name label (left side)
+        drawText(canvas, task.task.name, task.labelPosition,
+            fontSize = config.fontSize - 2, bold = false, alignment = TextAlignment.LEFT)
+
+        // Task name on bar (white text)
+        drawText(canvas, task.task.name,
+            PointF(bar.centerX(), bar.centerY()),
+            fontSize = config.fontSize - 3, bold = false, alignment = TextAlignment.CENTER,
+            textColor = Color.WHITE)
+    }
+
+    // endregion
+
+    // region ER Diagram Drawing
+
+    private fun drawEREntity(canvas: Canvas, entity: PositionedEREntity) {
+        // Full box
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = config.backgroundColor
+            style = Paint.Style.FILL
+        }
+        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = config.nodeBorderColor
+            style = Paint.Style.STROKE
+            strokeWidth = config.lineWidth
+        }
+        canvas.drawRect(entity.frame, bgPaint)
+        canvas.drawRect(entity.frame, borderPaint)
+
+        // Header
+        val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = config.nodeColor
+            style = Paint.Style.FILL
+        }
+        canvas.drawRect(entity.headerFrame, headerPaint)
+
+        drawText(canvas, entity.entity.name,
+            PointF(entity.headerFrame.centerX(), entity.headerFrame.centerY()),
+            fontSize = config.fontSize, bold = true, alignment = TextAlignment.CENTER)
+
+        // Separator
+        val linePaint = Paint().apply {
+            color = config.nodeBorderColor
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+        }
+        canvas.drawLine(entity.frame.left, entity.headerFrame.bottom,
+            entity.frame.right, entity.headerFrame.bottom, linePaint)
+
+        // Attributes
+        for ((i, attr) in entity.entity.attributes.withIndex()) {
+            if (i >= entity.attributeFrames.size) break
+            val attrFrame = entity.attributeFrames[i]
+            val keyStr = if (attr.key != null) " ${attr.key.value}" else ""
+            val text = "${attr.attributeType} ${attr.name}$keyStr"
+            drawText(canvas, text,
+                PointF(entity.frame.left + 10f, attrFrame.centerY()),
+                fontSize = config.fontSize - 2, bold = attr.key != null, alignment = TextAlignment.LEFT)
+        }
+    }
+
+    private fun drawERRelationship(canvas: Canvas, rel: PositionedERRelationship) {
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = config.edgeColor
+            style = Paint.Style.STROKE
+            strokeWidth = config.lineWidth
+        }
+        canvas.drawLine(rel.fromPoint.x, rel.fromPoint.y, rel.toPoint.x, rel.toPoint.y, paint)
+
+        // Draw cardinality markers
+        val angle = atan2((rel.toPoint.y - rel.fromPoint.y).toDouble(),
+            (rel.toPoint.x - rel.fromPoint.x).toDouble()).toFloat()
+        drawERCardinality(canvas, rel.relationship.fromCardinality, rel.fromPoint, angle)
+        drawERCardinality(canvas, rel.relationship.toCardinality, rel.toPoint,
+            angle + Math.PI.toFloat())
+
+        // Label
+        if (rel.relationship.label.isNotEmpty()) {
+            val textSize = measureText(rel.relationship.label, config.fontSize - 2)
+            val bgRect = RectF(
+                rel.labelPosition.x - textSize.x / 2f - 4f,
+                rel.labelPosition.y - textSize.y / 2f - 2f,
+                rel.labelPosition.x + textSize.x / 2f + 4f,
+                rel.labelPosition.y + textSize.y / 2f + 2f
+            )
+            val bgPaint = Paint().apply {
+                color = config.backgroundColor
+                style = Paint.Style.FILL
+            }
+            canvas.drawRect(bgRect, bgPaint)
+
+            drawText(canvas, rel.relationship.label, rel.labelPosition,
+                fontSize = config.fontSize - 2, bold = false, alignment = TextAlignment.CENTER)
+        }
+    }
+
+    private fun drawERCardinality(canvas: Canvas, cardinality: ERRelationship.ERCardinality,
+                                  at: PointF, angle: Float) {
+        val offset = 15f
+        val a = angle.toDouble()
+        val markerPoint = PointF(
+            (at.x + offset * cos(a)).toFloat(),
+            (at.y + offset * sin(a)).toFloat()
+        )
+
+        val perpAngle = a + Math.PI / 2
+        val lineLen = 8f
+
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = config.edgeColor
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+        }
+
+        when (cardinality) {
+            ERRelationship.ERCardinality.EXACTLY_ONE -> {
+                // Two vertical lines ||
+                for (d in listOf(-3f, 3f)) {
+                    val p = PointF(
+                        (markerPoint.x + d * cos(a)).toFloat(),
+                        (markerPoint.y + d * sin(a)).toFloat()
+                    )
+                    canvas.drawLine(
+                        (p.x - lineLen / 2 * cos(perpAngle)).toFloat(),
+                        (p.y - lineLen / 2 * sin(perpAngle)).toFloat(),
+                        (p.x + lineLen / 2 * cos(perpAngle)).toFloat(),
+                        (p.y + lineLen / 2 * sin(perpAngle)).toFloat(),
+                        paint
+                    )
+                }
+            }
+            ERRelationship.ERCardinality.ZERO_OR_ONE -> {
+                // Line and circle |o
+                canvas.drawLine(
+                    (markerPoint.x - lineLen / 2 * cos(perpAngle)).toFloat(),
+                    (markerPoint.y - lineLen / 2 * sin(perpAngle)).toFloat(),
+                    (markerPoint.x + lineLen / 2 * cos(perpAngle)).toFloat(),
+                    (markerPoint.y + lineLen / 2 * sin(perpAngle)).toFloat(),
+                    paint
+                )
+                val circleCenter = PointF(
+                    (markerPoint.x + 8 * cos(a)).toFloat(),
+                    (markerPoint.y + 8 * sin(a)).toFloat()
+                )
+                canvas.drawCircle(circleCenter.x, circleCenter.y, 4f, paint)
+            }
+            ERRelationship.ERCardinality.ZERO_OR_MORE -> {
+                // Circle and crow's foot o{
+                val circleCenter = PointF(
+                    (markerPoint.x - 4 * cos(a)).toFloat(),
+                    (markerPoint.y - 4 * sin(a)).toFloat()
+                )
+                canvas.drawCircle(circleCenter.x, circleCenter.y, 4f, paint)
+                drawCrowsFoot(canvas, PointF(
+                    (markerPoint.x + 6 * cos(a)).toFloat(),
+                    (markerPoint.y + 6 * sin(a)).toFloat()
+                ), angle, lineLen)
+            }
+            ERRelationship.ERCardinality.ONE_OR_MORE -> {
+                // Line and crow's foot }|
+                canvas.drawLine(
+                    (markerPoint.x - lineLen / 2 * cos(perpAngle)).toFloat(),
+                    (markerPoint.y - lineLen / 2 * sin(perpAngle)).toFloat(),
+                    (markerPoint.x + lineLen / 2 * cos(perpAngle)).toFloat(),
+                    (markerPoint.y + lineLen / 2 * sin(perpAngle)).toFloat(),
+                    paint
+                )
+                drawCrowsFoot(canvas, PointF(
+                    (markerPoint.x + 8 * cos(a)).toFloat(),
+                    (markerPoint.y + 8 * sin(a)).toFloat()
+                ), angle, lineLen)
+            }
+        }
+    }
+
+    private fun drawCrowsFoot(canvas: Canvas, at: PointF, angle: Float, size: Float) {
+        val a = angle.toDouble()
+        val perpAngle = a + Math.PI / 2
+        val forkLen = size / 1.5f
+
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = config.edgeColor
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+        }
+
+        val tip = PointF(
+            (at.x + forkLen * cos(a)).toFloat(),
+            (at.y + forkLen * sin(a)).toFloat()
+        )
+        canvas.drawLine(tip.x, tip.y,
+            (at.x + size / 2 * cos(perpAngle)).toFloat(),
+            (at.y + size / 2 * sin(perpAngle)).toFloat(), paint)
+        canvas.drawLine(tip.x, tip.y,
+            (at.x - size / 2 * cos(perpAngle)).toFloat(),
+            (at.y - size / 2 * sin(perpAngle)).toFloat(), paint)
+        canvas.drawLine(tip.x, tip.y, at.x, at.y, paint)
+    }
+
+    // endregion
+
     // region Text Drawing
 
     enum class TextAlignment { LEFT, CENTER, RIGHT }
 
     private fun drawText(canvas: Canvas, text: String, at: PointF,
-                         fontSize: Float, bold: Boolean, alignment: TextAlignment) {
+                         fontSize: Float, bold: Boolean, alignment: TextAlignment,
+                         textColor: Int? = null) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = config.textColor
+            color = textColor ?: config.textColor
             textSize = fontSize
             typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
             textAlign = when (alignment) {

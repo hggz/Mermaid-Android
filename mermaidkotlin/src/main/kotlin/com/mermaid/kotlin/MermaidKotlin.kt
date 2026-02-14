@@ -64,7 +64,28 @@ class MermaidKotlin(
                 val layout = layoutEngine.layoutPieChart(diagram)
                 renderer.renderPieChart(layout)
             }
+            is ClassDiagram -> {
+                val layout = layoutEngine.layoutClassDiagram(diagram)
+                renderer.renderClassDiagram(layout)
+            }
+            is StateDiagram -> {
+                val layout = layoutEngine.layoutStateDiagram(diagram)
+                renderer.renderStateDiagram(layout)
+            }
+            is GanttDiagram -> {
+                val layout = layoutEngine.layoutGanttChart(diagram)
+                renderer.renderGanttChart(layout)
+            }
+            is ERDiagram -> {
+                val layout = layoutEngine.layoutERDiagram(diagram)
+                renderer.renderERDiagram(layout)
+            }
             else -> throw IllegalArgumentException("Unsupported diagram type: ${diagram.type}")
         }
+    }
+
+    companion object {
+        /** Create a dark mode renderer. */
+        fun darkMode(): MermaidKotlin = MermaidKotlin(LayoutConfig.DARK_MODE)
     }
 }

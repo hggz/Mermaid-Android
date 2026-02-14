@@ -81,7 +81,7 @@ class DiagramLayoutTest {
 
         // From point should be below node A, to point above node B
         assertNotNull(edge.labelPosition)
-        assertTrue(edge.fromPoint.y < edge.toPoint.y) // TD: fromY < toY
+        assertTrue(edge.points.first().y < edge.points.last().y) // TD: fromY < toY
     }
 
     @Test
@@ -205,6 +205,112 @@ class DiagramLayoutTest {
         val result = layout.layoutPieChart(diagram)
         assertEquals(1, result.slices.size)
         assertEquals(100f, result.slices[0].percentage, 0.1f)
+    }
+
+    // endregion
+
+    // region Class Diagram Layout
+
+    @Test
+    fun testClassDiagramLayout() {
+        val diagram = ClassDiagram(
+            classes = listOf(
+                ClassDefinition(name = "Animal",
+                    properties = mutableListOf(ClassMember(name = "name")),
+                    methods = mutableListOf(ClassMember(name = "makeSound()"))),
+                ClassDefinition(name = "Dog"),
+            ),
+            relationships = listOf(
+                ClassRelationship(from = "Dog", to = "Animal",
+                    relationshipType = ClassRelationship.ClassRelationType.INHERITANCE)
+            )
+        )
+
+        val result = layout.layoutClassDiagram(diagram)
+        assertEquals(2, result.classes.size)
+        assertEquals(1, result.relationships.size)
+        assertTrue(result.width > 0)
+        assertTrue(result.height > 0)
+    }
+
+    // endregion
+
+    // region State Diagram Layout
+
+    @Test
+    fun testStateDiagramLayout() {
+        val diagram = StateDiagram(
+            states = listOf(
+                StateNode(id = "[*]", label = "[*]"),
+                StateNode(id = "Active", label = "Active"),
+                StateNode(id = "Inactive", label = "Inactive"),
+            ),
+            transitions = listOf(
+                StateTransition(from = "[*]", to = "Active"),
+                StateTransition(from = "Active", to = "Inactive", label = "timeout"),
+            )
+        )
+
+        val result = layout.layoutStateDiagram(diagram)
+        assertEquals(3, result.states.size)
+        assertEquals(2, result.transitions.size)
+        assertTrue(result.width > 0)
+
+        val startState = result.states.first { it.state.id == "[*]" }
+        assertTrue(startState.isStartEnd)
+    }
+
+    // endregion
+
+    // region Gantt Chart Layout
+
+    @Test
+    fun testGanttChartLayout() {
+        val section = GanttSection(name = "Phase 1")
+        section.tasks.add(GanttTask(name = "Design", status = GanttTask.TaskStatus.DONE))
+        section.tasks.add(GanttTask(name = "Implement", status = GanttTask.TaskStatus.ACTIVE))
+
+        val diagram = GanttDiagram(
+            title = "Project",
+            dateFormat = "YYYY-MM-DD",
+            sections = listOf(section)
+        )
+
+        val result = layout.layoutGanttChart(diagram)
+        assertEquals("Project", result.title)
+        assertEquals(1, result.sections.size)
+        assertEquals(2, result.tasks.size)
+        assertTrue(result.width > 0)
+        assertTrue(result.height > 0)
+    }
+
+    // endregion
+
+    // region ER Diagram Layout
+
+    @Test
+    fun testERDiagramLayout() {
+        val diagram = ERDiagram(
+            entities = listOf(
+                EREntity(name = "CUSTOMER",
+                    attributes = mutableListOf(
+                        ERAttribute(attributeType = "int", name = "id", key = ERAttribute.AttributeKey.PK)
+                    )),
+                EREntity(name = "ORDER"),
+            ),
+            relationships = listOf(
+                ERRelationship(from = "CUSTOMER", to = "ORDER",
+                    label = "places",
+                    fromCardinality = ERRelationship.ERCardinality.EXACTLY_ONE,
+                    toCardinality = ERRelationship.ERCardinality.ZERO_OR_MORE)
+            )
+        )
+
+        val result = layout.layoutERDiagram(diagram)
+        assertEquals(2, result.entities.size)
+        assertEquals(1, result.relationships.size)
+        assertTrue(result.width > 0)
+        assertTrue(result.height > 0)
     }
 
     // endregion

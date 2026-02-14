@@ -335,6 +335,230 @@ class MermaidParserTest {
 
         val pie = parser.parse("pie\n  \"A\" : 1")
         assertTrue(pie is PieChartDiagram)
+
+        val classDiag = parser.parse("classDiagram\n  class Animal")
+        assertTrue(classDiag is ClassDiagram)
+
+        val stateDiag = parser.parse("stateDiagram-v2\n  [*] --> Active")
+        assertTrue(stateDiag is StateDiagram)
+
+        val gantt = parser.parse("gantt\n  title Test\n  Task : a1, 2024-01-01, 5d")
+        assertTrue(gantt is GanttDiagram)
+
+        val er = parser.parse("erDiagram\n  CUSTOMER ||--o{ ORDER : places")
+        assertTrue(er is ERDiagram)
+    }
+
+    // endregion
+
+    // region Class Diagram Parsing
+
+    @Test
+    fun testClassDiagramBasic() {
+        val diagram = parser.parse("""
+            classDiagram
+                class Animal {
+                    +String name
+                    +int age
+                    +makeSound()
+                }
+        """.trimIndent())
+
+        val cls = diagram as ClassDiagram
+        assertEquals(1, cls.classes.size)
+        assertEquals("Animal", cls.classes[0].name)
+        assertEquals(2, cls.classes[0].properties.size)
+        assertEquals(1, cls.classes[0].methods.size)
+    }
+
+    @Test
+    fun testClassDiagramRelationships() {
+        val diagram = parser.parse("""
+            classDiagram
+                Animal <|-- Dog
+                Animal <|-- Cat
+                Dog : +bark()
+        """.trimIndent())
+
+        val cls = diagram as ClassDiagram
+        assertTrue(cls.classes.size >= 3)
+        assertEquals(2, cls.relationships.size)
+        assertEquals(ClassRelationship.ClassRelationType.INHERITANCE, cls.relationships[0].relationshipType)
+    }
+
+    @Test
+    fun testClassDiagramAnnotation() {
+        val diagram = parser.parse("""
+            classDiagram
+                class Shape
+                <<interface>> Shape
+                Shape : +draw()
+        """.trimIndent())
+
+        val cls = diagram as ClassDiagram
+        val shape = cls.classes.first { it.name == "Shape" }
+        assertEquals("interface", shape.annotation)
+    }
+
+    // endregion
+
+    // region State Diagram Parsing
+
+    @Test
+    fun testStateDiagramBasic() {
+        val diagram = parser.parse("""
+            stateDiagram-v2
+                [*] --> Active
+                Active --> Inactive : timeout
+                Inactive --> [*]
+        """.trimIndent())
+
+        val state = diagram as StateDiagram
+        assertTrue(state.states.size >= 3)
+        assertEquals(3, state.transitions.size)
+        assertEquals("timeout", state.transitions[1].label)
+    }
+
+    @Test
+    fun testStateDiagramDescription() {
+        val diagram = parser.parse("""
+            stateDiagram-v2
+                state "Working state" as working
+                [*] --> working
+        """.trimIndent())
+
+        val state = diagram as StateDiagram
+        val workingState = state.states.first { it.id == "working" }
+        assertEquals("Working state", workingState.description)
+    }
+
+    // endregion
+
+    // region Gantt Diagram Parsing
+
+    @Test
+    fun testGanttDiagramBasic() {
+        val diagram = parser.parse("""
+            gantt
+                title Project Plan
+                dateFormat YYYY-MM-DD
+                section Phase 1
+                Design : done, des1, 2024-01-01, 5d
+                Implement : active, imp1, after des1, 10d
+        """.trimIndent())
+
+        val gantt = diagram as GanttDiagram
+        assertEquals("Project Plan", gantt.title)
+        assertEquals("YYYY-MM-DD", gantt.dateFormat)
+        assertEquals(1, gantt.sections.size)
+        assertEquals("Phase 1", gantt.sections[0].name)
+        assertEquals(2, gantt.sections[0].tasks.size)
+        assertEquals(GanttTask.TaskStatus.DONE, gantt.sections[0].tasks[0].status)
+        assertEquals(GanttTask.TaskStatus.ACTIVE, gantt.sections[0].tasks[1].status)
+    }
+
+    @Test
+    fun testGanttDiagramMultipleSections() {
+        val diagram = parser.parse("""
+            gantt
+                title Gantt
+                section Planning
+                Task1 : a1, 2024-01-01, 3d
+                section Execution
+                Task2 : a2, after a1, 5d
+        """.trimIndent())
+
+        val gantt = diagram as GanttDiagram
+        assertEquals(2, gantt.sections.size)
+    }
+
+    // endregion
+
+    // region ER Diagram Parsing
+
+    @Test
+    fun testERDiagramBasic() {
+        val diagram = parser.parse("""
+            erDiagram
+                CUSTOMER ||--o{ ORDER : places
+                ORDER ||--|{ LINE-ITEM : contains
+        """.trimIndent())
+
+        val er = diagram as ERDiagram
+        assertTrue(er.entities.size >= 3)
+        assertEquals(2, er.relationships.size)
+        assertEquals("places", er.relationships[0].label)
+    }
+
+    @Test
+    fun testERDiagramEntityAttributes() {
+        val diagram = parser.parse("""
+            erDiagram
+                CUSTOMER {
+                    int id PK
+                    string name
+                    string email UK
+                }
+        """.trimIndent())
+
+        val er = diagram as ERDiagram
+        val customer = er.entities.first { it.name == "CUSTOMER" }
+        assertEquals(3, customer.attributes.size)
+        assertEquals(ERAttribute.AttributeKey.PK, customer.attributes[0].key)
+        assertEquals(ERAttribute.AttributeKey.UK, customer.attributes[2].key)
+    }
+
+    @Test
+    fun testERDiagramCardinalities() {
+        val diagram = parser.parse("""
+            erDiagram
+                A ||--|| B : "one-to-one"
+                C ||--o{ D : "one-to-many"
+                E }|--|{ F : "many-to-many"
+        """.trimIndent())
+
+        val er = diagram as ERDiagram
+        assertEquals(3, er.relationships.size)
+        assertEquals(ERRelationship.ERCardinality.EXACTLY_ONE, er.relationships[0].fromCardinality)
+        assertEquals(ERRelationship.ERCardinality.EXACTLY_ONE, er.relationships[0].toCardinality)
+        assertEquals(ERRelationship.ERCardinality.EXACTLY_ONE, er.relationships[1].fromCardinality)
+        assertEquals(ERRelationship.ERCardinality.ZERO_OR_MORE, er.relationships[1].toCardinality)
+    }
+
+    // endregion
+
+    // region Flowchart Subgraph and Style
+
+    @Test
+    fun testFlowchartSubgraph() {
+        val diagram = parser.parse("""
+            flowchart TD
+                subgraph SG1[Group One]
+                    A --> B
+                end
+                C --> A
+        """.trimIndent())
+
+        val flowchart = diagram as FlowchartDiagram
+        assertEquals(1, flowchart.subgraphs.size)
+        assertEquals("Group One", flowchart.subgraphs[0].label)
+        assertTrue(flowchart.subgraphs[0].nodeIds.contains("A"))
+        assertTrue(flowchart.subgraphs[0].nodeIds.contains("B"))
+    }
+
+    @Test
+    fun testFlowchartClassDef() {
+        val diagram = parser.parse("""
+            flowchart TD
+                A[Styled]:::red --> B[Normal]
+                classDef red fill:#f99,stroke:#f00,color:#000
+        """.trimIndent())
+
+        val flowchart = diagram as FlowchartDiagram
+        assertTrue(flowchart.classDefs.containsKey("red"))
+        assertEquals("#f99", flowchart.classDefs["red"]?.fill)
+        assertTrue(flowchart.nodeClassMap.containsKey("A"))
+        assertEquals("red", flowchart.nodeClassMap["A"])
     }
 
     // endregion
